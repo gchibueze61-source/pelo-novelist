@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    background-color: #faf6ef;
+  }
+  html.dark {
+    background-color: #1c1917;
+  }
+  body {
+    @apply text-ink dark:text-ink-dark font-sans antialiased transition-colors;
+  }
+  ::selection {
+    @apply bg-gold/30;
+  }
+  *:focus-visible {
+    outline: 2px solid #b98d4a;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.thin-scroll::-webkit-scrollbar { width: 6px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: #e4dbc8; border-radius: 999px; }
+.dark .thin-scroll::-webkit-scrollbar-thumb { background: #33302c; }
+
+/* extruded 3D wordmark, pure CSS, no libraries */
+.pelo-3d {
+  transform: perspective(400px) rotateX(8deg);
+  transform-style: preserve-3d;
+}
+.pelo-3d span {
+  display: inline-block;
+  text-shadow:
+    0 1px 0 #9a7a3f,
+    0 2px 0 #8a6c37,
+    0 3px 0 #7a5f30,
+    0 4px 6px rgba(0,0,0,0.35);
+}
