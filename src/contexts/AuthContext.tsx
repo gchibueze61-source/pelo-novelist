@@ -27,11 +27,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session?.user) loadProfile(data.session.user);
-      setLoading(false);
-    });
+    let mounted = true;
+
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        console.warn("Auth session check timed out — continuing without session.");
+        setLoading(false);
+      }
+    }, 5000);
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setSession(data.session);
+        if (data.session?.user) loadProfile(data.session.user);
+      })
+      .catch((err) => console.error("Failed to get session:", err))
+      .finally(() => {
+        clearTimeout(timeout);
+        if (mounted) setLoading(false);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
@@ -39,7 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else setProfile(null);
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   async function signOut() {
