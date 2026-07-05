@@ -1,16 +1,10 @@
 import type { AttachedDoc } from "./supabase";
 
-const DIFY_URL = (import.meta.env.VITE_DIFY_API_URL as string) || "https://api.dify.ai/v1";
-const DIFY_KEY = import.meta.env.VITE_DIFY_API_KEY as string;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export type DifyStreamResult = { conversationId: string };
 
-/**
- * Builds the final message sent to Dify: the user's raw prompt, prefixed with
- * the project's style/tone instructions and the full text of any attached
- * reference documents. This is what makes a Project "remember" its voice —
- * Dify itself is stateless about style, so we inject it on every call.
- */
 export function buildBundledPrompt(userPrompt: string, styleInstructions: string, attachedDocs: AttachedDoc[]): string {
   const parts: string[] = [];
 
@@ -30,39 +24,38 @@ export function buildBundledPrompt(userPrompt: string, styleInstructions: string
   return parts.join("\n\n");
 }
 
-/**
- * Streams a response from Dify. onChunk fires as text arrives.
- * Pass the conversationId you got back last time to keep continuity;
- * leave blank to start a new thread.
- */
 export async function streamDify(
   bundledMessage: string,
   conversationId: string,
   userId: string,
   onChunk: (text: string) => void
 ): Promise<DifyStreamResult> {
-  if (!DIFY_KEY) {
-    throw new Error("Missing VITE_DIFY_API_KEY in .env — paste your Dify app's API key there.");
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.");
   }
 
-  const res = await fetch(`${DIFY_URL}/chat-messages`, {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/dify-proxy`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${DIFY_KEY}`,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
-      inputs: {},
       query: bundledMessage,
-      response_mode: "streaming",
       conversation_id: conversationId || undefined,
       user: userId,
     }),
   });
 
   if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Dify request failed (${res.status}): ${text || "check your VITE_DIFY_API_URL and key"}`);
+    let msg = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body.error) msg = body.error;
+    } catch {
+      // response wasn't JSON
+    }
+    throw new Error(msg);
   }
 
   const reader = res.body.getReader();
@@ -87,7 +80,7 @@ export async function streamDify(
         if (event.event === "message" && event.answer) onChunk(event.answer);
         if (event.conversation_id) newConversationId = event.conversation_id;
       } catch {
-        // partial chunk still arriving, wait for more
+        // partial chunk still arriving
       }
     }
   }
@@ -95,12 +88,6 @@ export async function streamDify(
   return { conversationId: newConversationId };
 }
 
-/**
- * Extracts readable text from an uploaded file for use as project context.
- * .txt / .md are read directly. Other types (PDF, DOCX) are stored by name
- * only for now — paste key excerpts into the style profile instead until
- * a parser is added.
- */
 export async function extractTextFromFile(file: File): Promise<{ text: string; supported: boolean }> {
   const readableTypes = [".txt", ".md"];
   const isReadable = readableTypes.some((ext) => file.name.toLowerCase().endsWith(ext));
